@@ -1,0 +1,103 @@
+#include "beaconfilter.h"
+
+#include <assert.h>
+#include <math.h>
+#include <time.h>
+#include <string>
+#include <sstream>
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <set>
+
+using beaconfilter::BeaconFilter;
+
+size_t ipToInteger(const std::string& ipAddress) {
+    size_t result = 0;
+    std::istringstream iss(ipAddress);
+    std::string segment;
+    int shift = 24;
+
+    while (std::getline(iss, segment, '.')) {
+        unsigned int value = std::stoi(segment);
+        result |= (value << shift);
+        shift -= 8;
+    }
+
+    return result;
+}
+
+int main(int argc, char **argv) {
+
+  std::ifstream file("../data/listed_ip_90.txt");  // 打开文本文件
+  std::string ipaddr;
+  std::set<size_t> ipset_uniq;
+  
+  if (file.is_open()) {  // 检查文件是否成功打开
+      while(std::getline(file, ipaddr))
+      {
+        ipset_uniq.insert(ipToInteger(ipaddr));
+      }
+      file.close();  // 关闭文件
+  } else {
+      std::cerr << "Failed to open the file.";
+  }
+  std::vector<size_t> ipset(ipset_uniq.begin(), ipset_uniq.end());
+  int insert_items = ipset.size()*0.8;
+  clock_t start_time, end_time;
+  // Create a beacon filter where each item is of type size_t and
+  // use 12 bits for each item:
+  BeaconFilter<size_t, 12> filter(insert_items);
+  // Insert items to this beacon filter
+  size_t num_inserted = 0;
+  // ipset
+  for (size_t i = 0; i < insert_items; i++, num_inserted++) {
+    if (filter.Add(ipset[i]) != beaconfilter::Ok) {
+      break;
+    }
+  }
+  // double lf = 0.05;
+  // for(int i=0; i<19; i++)
+  // {
+  //     BeaconFilter<size_t, 8> filter(insert_items);
+  //     start_time = clock();
+  //     for (size_t i = 0; i < insert_items; i++, num_inserted++) {
+  //       if(filter.lf() < 0.8) filter.Add(i);
+  //       else{
+  //         //printf("%.2f", filter.lf());
+  //         break;
+  //       }
+  //     }
+  //     end_time = clock();
+  //     printf( "%f\n", ((double)(end_time - start_time) / CLOCKS_PER_SEC));
+  //     lf+=0.05;
+  // }
+  // exit(0);
+  std::cout << filter.Info() << std::endl;
+  // Check if previously inserted items are in the filter, expected
+  // true for all items
+  for (size_t i = 0; i < num_inserted; i++) {
+    assert(filter.Contain(ipset[i]) == beaconfilter::Ok);
+  }
+
+  // Check non-existing items, a few false positives expected
+  size_t total_queries = 0;
+  size_t false_queries = 0;
+  for (size_t i = insert_items; i < ipset.size(); i++) {
+    if (filter.Contain(ipset[i]) == beaconfilter::Ok) {
+      false_queries++;
+    }
+    total_queries++;
+  }
+
+  // Output the measured false positive rate
+  std::cout << "false positive rate is "
+            << 100.0 * false_queries / total_queries << "%\n";
+
+  /*for (size_t i = 0; i < num_inserted; i++)
+  {
+    assert(filter.Contain(ipset_ins[i]) == beaconfilter::Ok);
+    filter.Delete(ipset_ins[i]);
+  }*/
+  return 0;
+}
